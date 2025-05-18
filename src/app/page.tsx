@@ -1,103 +1,175 @@
-import Image from "next/image";
+// "use client"
+
+// export default function Home() {
+
+//   return <div className="flex flex-col h-screen justify-between">
+//     <header className="bg-white p-2">
+//       <div className="flex lg:flex-1 items-center justify-center">
+//         <a href="#" className="m-1.5">
+//           <span className="sr-only">Text-to-SQL Agent</span>
+//           <img src="http://localhost:3000/watsonx.svg" alt="" className="h-8 w-auto" />
+//         </a>
+//         <h1 className="text-black font-bold">Text-to-SQL Agent</h1>
+//       </div>
+//     </header>
+//     <div className="flex flex-col h-full">
+//       <div className="col-start-1 col-end-8 p-3 rounded-lg">
+//         <div className="flex flex-row items-center">
+//           <div className="flex items-center justify-center h-8 w-8 rounded full bg-orange-400 text-white flex-shrink-0 text-sm">
+//             Me
+//           </div>
+//           <div className="relative ml-3 text-sm bg-white py-2 px-4 shadow rounded-xl">
+//             <div>Tell me a joke about sql</div>
+//           </div>
+//         </div>
+//       </div>
+//       <div className="col-start-6 col-end-13 p-3 rounded-lg">
+//         <div className="flex items-center justify-start flex-row-reverse">
+//           <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-400 flex-shrink-0 text-sm">
+//             AI
+//           </div>
+//           <div className="relative mr-3 text-sm bg-indigo-100 py-2 px-4 shadow rounded-xl">
+//             <div>
+//               A couple of relational databases walked into a NoSQL bar. They left because they could not find a table
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//     <div className="flex flex-col flex-auto justify-between bg-gray-100 p-6">
+//       <div className="top-[100vh] flex flex-row items-center h-16 rounded-xl bg-white w-full px-4">
+//         <div className="flex-grow ml-4">
+//           <div className="relative w-full">
+//             <input type="text" className="flex w-full border rounded-xl focus:outline-none focus:border-indigo-300 pl-4 h-10" />
+//           </div>
+//         </div>
+//         <div className="ml-4">
+//           <button className="flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 rounded-xl text-white px-4 py-2 flex-shrink-0">
+//             <span>Send</span>
+//           </button>
+//         </div>
+//       </div>
+//     </div>
+//   </div>
+// }
+
+"use client"
+import { useState, useEffect } from "react";
+import {
+  HumanMessage,
+  SystemMessage,
+  BaseMessage,
+  AIMessage,
+  mapChatMessagesToStoredMessages
+} from "@langchain/core/messages"
+import { message } from "./actions";
+import{ seed } from "./database"
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [inputMessage, setInputMessage] = useState("")
+  const [messages, setMessages] = useState<BaseMessage[]>([
+    new SystemMessage(`
+       You are an expert SQL assistant. Your task is to generate SQL queries based on user requests. Follow these strict formatting guidelines:
+        
+      You should create a SQLite query based on natural language. 
+      Use the "getFromDB" tool to get data from a database.
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
+      - Always enclose field names and table names in double quotes ("), even if they contain no special characters.
+      - Ensure proper SQL syntax and use best practices for readability.
+      - Maintain consistency in capitalization (e.g., SQL keywords in uppercase).
+      `)
+  ])
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(()=>{
+    seed()
+  }, [])
+  const sendMessage = async () => {
+    setInputMessage("");
+    setIsLoading(true);
+    const messageHistory = [...messages, new HumanMessage(inputMessage)];
+
+    const response = await message(mapChatMessagesToStoredMessages(messageHistory));
+
+    if (response) {
+      messageHistory.push(new AIMessage(response as string));
+    }
+
+    setMessages(messageHistory);
+    setIsLoading(false);
+  }
+  return (
+    <div className="flex flex-col h-screen justify-between bg-white text-black">
+      <header className="bg-white p-2 border-b">
+        <div className="flex lg:flex-1 items-center justify-center">
+          <a href="#" className="m-1.5">
+            <span className="sr-only">Text-to-SQL Agent</span>
           </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          <h1 className="text-black font-bold">Text-to-SQL Agent</h1>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </header>
+
+      <div className="flex-grow overflow-y-auto bg-white">
+        {
+          messages.length > 0 &&
+          messages.map((message, index) => {
+            if (message instanceof HumanMessage) {
+              return (
+                <div key={message.getType() + index} className="col-start-1 col-end-8 p-3 rounded-lg">
+                  <div className="flex flex-row items-center">
+                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-400 text-white flex-shrink-0 text-sm">
+                      Me
+                    </div>
+                    <div className="relative ml-3 text-sm bg-gray-400 text-black py-2 px-4 shadow rounded-xl">
+                      <div>{message.content as string}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            if (message instanceof AIMessage) {
+              return (
+                <div key={message.getType() + index} className="col-start-6 col-end-13 p-3 rounded-lg">
+                  <div className="flex items-center justify-start flex-row-reverse">
+                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-400 flex-shrink-0 text-sm">
+                      AI
+                    </div>
+                    <div className="relative mr-3 text-sm bg-blue-300 text-black py-2 px-4 shadow rounded-xl">
+                      <div>
+                        {message.content as string}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+          })
+        }
+
+      </div>
+
+      <div className="bg-white p-6 border-t">
+        <div className="flex flex-row items-center h-16 rounded-xl bg-white w-full px-4">
+          <div className="flex-grow ml-4">
+            <div className="relative w-full">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={e => setInputMessage(e.target.value)}
+                disabled={isLoading}
+                placeholder="Type your message here..."
+                className="flex w-full border rounded-xl focus:outline-none focus:border-indigo-300 pl-4 h-10"
+              />
+            </div>
+          </div>
+          <div className="ml-4">
+            <button onClick={sendMessage} className="flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 rounded-xl text-white px-4 py-2 flex-shrink-0">
+              <span>{isLoading ? `Loading...` : `Send`}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
-  );
+  )
 }
