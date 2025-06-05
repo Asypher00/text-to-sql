@@ -304,7 +304,7 @@ export const testConnection = async (config: DatabaseConfig): Promise<{ success:
 };
 
 // Get current connection status
-export const getConnectionStatus = (): { connected: boolean; database?: string; server?: string } => {
+export const getConnectionStatus = async (): Promise<{ connected: boolean; database?: string; server?: string }> => {
   return {
     connected: connectionPool?.connected ?? false,
     database: currentConfig?.database,

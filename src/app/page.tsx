@@ -255,7 +255,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50" style={{color: "black"}}>
       {/* Header */}
       <header className="bg-white shadow-sm border-b p-4">
         <div className="flex justify-between items-center max-w-7xl mx-auto">
