@@ -347,69 +347,6 @@ export const getDatabaseSchema = async (): Promise<string> => {
   }
 };
 
-    // Get table row counts
-    const countRequest = new sql.Request(connectionPool);
-    const countResult = await countRequest.query(`
-      SELECT 
-        s.name AS schema_name,
-        t.name AS table_name,
-        p.rows AS row_count
-      FROM sys.tables t
-      INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-      INNER JOIN sys.partitions p ON t.object_id = p.object_id
-      WHERE p.index_id IN (0, 1)
-    `);
-
-    // Create a map of table row counts
-    const rowCounts = new Map();
-    countResult.recordset.forEach(row => {
-      const key = `${row.schema_name}.${row.table_name}`;
-      rowCounts.set(key, row.row_count);
-    });
-
-    // Format schema information
-    let schemaInfo = `Database: ${currentConfig?.database}\nServer: ${currentConfig?.server}\n\n`;
-    schemaInfo += "=== DATABASE SCHEMA ===\n\n";
-    
-    let currentTable = "";
-    let tableCount = 0;
-    
-    for (const row of result.recordset) {
-      const fullTableName = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}`;
-      
-      if (currentTable !== fullTableName) {
-        if (currentTable !== "") schemaInfo += "\n";
-        tableCount++;
-        const rowCount = rowCounts.get(fullTableName) || 0;
-        schemaInfo += `Table ${tableCount}: ${fullTableName} (${rowCount} rows)\n`;
-        schemaInfo += "Columns:\n";
-        currentTable = fullTableName;
-      }
-      
-      const nullable = row.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL';
-      const primaryKey = row.IS_PRIMARY_KEY === 'YES' ? ' [PK]' : '';
-      const foreignKey = row.IS_FOREIGN_KEY === 'YES' ? ` [FK -> ${row.REFERENCED_TABLE_NAME}.${row.REFERENCED_COLUMN_NAME}]` : '';
-      const maxLength = row.CHARACTER_MAXIMUM_LENGTH ? `(${row.CHARACTER_MAXIMUM_LENGTH})` : '';
-      const defaultValue = row.COLUMN_DEFAULT ? ` DEFAULT ${row.COLUMN_DEFAULT}` : '';
-      
-      schemaInfo += `  - ${row.COLUMN_NAME}: ${row.DATA_TYPE}${maxLength} ${nullable}${defaultValue}${primaryKey}${foreignKey}\n`;
-    }
-
-    schemaInfo += `\nTotal Tables: ${tableCount}\n`;
-    schemaInfo += "\n=== QUERY GUIDELINES ===\n";
-    schemaInfo += "- Use proper SQL Server T-SQL syntax\n";
-    schemaInfo += "- Use TOP N instead of LIMIT N\n";
-    schemaInfo += "- Use square brackets [table_name] if table/column names have spaces\n";
-    schemaInfo += "- Use GETDATE() for current date/time\n";
-    schemaInfo += "- Use proper schema.table notation when needed\n";
-
-    return schemaInfo;
-  } catch (error) {
-    console.error('Error getting database schema:', error);
-    throw new Error(`Failed to retrieve database schema: ${error.message}`);
-  }
-};
-
 // Execute SQL query
 export const execute = async (sqlQuery: string): Promise<any> => {
   if (!connectionPool) {

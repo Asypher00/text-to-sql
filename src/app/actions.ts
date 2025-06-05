@@ -130,7 +130,7 @@ export const message = async (messages: StoredMessage[]) => {
     const deserialized = mapStoredMessagesToChatMessages(messages);
     
     // Check if database is connected
-    const connectionStatus = getConnectionStatus();
+    const connectionStatus = await getConnectionStatus();
     
     if (!connectionStatus.connected) {
       return "❌ Please connect to a database first before asking questions. Use the 'Connect Database' button to establish a connection.";
