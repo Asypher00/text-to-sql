@@ -13,6 +13,15 @@ export interface DatabaseConfig {
   };
 }
 
+// Define the QueryResult interface
+export interface QueryResult {
+  data: any[]; // You might want to refine this 'any' if the data structure is predictable
+  rowsAffected: number[] | undefined;
+  success: boolean;
+  query: string;
+  error?: string; // Add error property for failed queries
+}
+
 // Private variables to hold the connection pool and config
 let connectionPool: sql.ConnectionPool | null = null;
 let currentConfig: DatabaseConfig | null = null;
@@ -61,12 +70,13 @@ export const initializeConnection = async (config: DatabaseConfig): Promise<bool
     dbSchema = await getDatabaseSchemaInternal();
 
     return true;
-  } catch (error) {
+  } catch (error: unknown) { // Change 'any' to 'unknown'
     console.error('Error initializing database connection:', error);
     connectionPool = null;
     currentConfig = null;
     dbSchema = null;
-    throw error; // Re-throw to be caught by API route
+    const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
+    throw new Error(errorMessage); // Re-throw to be caught by API route
   }
 };
 
@@ -132,7 +142,7 @@ const getDatabaseSchemaInternal = async (): Promise<string> => {
       WHERE p.index_id IN (0, 1) -- Heap or Clustered Index
     `);
 
-    const rowCounts = new Map();
+    const rowCounts = new Map<string, number>(); // Explicitly type Map
     countResult.recordset.forEach(row => {
       const key = `${row.schema_name}.${row.table_name}`;
       rowCounts.set(key, row.row_count);
@@ -174,8 +184,9 @@ const getDatabaseSchemaInternal = async (): Promise<string> => {
     schemaInfo += "- Use proper schema.table notation when needed\n";
 
     return schemaInfo;
-  } catch (error) {
+  } catch (error: unknown) { // Change 'any' to 'unknown'
     console.error('Error getting database schema (initial attempt):', error);
+    const initialErrorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
     // Fallback: Try a simpler schema query if the complex one fails
     try {
       const simpleRequest = new sql.Request(connectionPool);
@@ -228,9 +239,10 @@ const getDatabaseSchemaInternal = async (): Promise<string> => {
       schemaInfo += "- Use proper schema.table notation when needed\n";
 
       return schemaInfo;
-    } catch (fallbackError: any) {
+    } catch (fallbackError: unknown) { // Change 'any' to 'unknown'
       console.error('Fallback schema query also failed:', fallbackError);
-      throw new Error(`Failed to retrieve database schema: ${fallbackError.message || error.message}`);
+      const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError); // Type narrowing
+      throw new Error(`Failed to retrieve database schema: ${fallbackErrorMessage}. Initial error: ${initialErrorMessage}`);
     }
   }
 };
@@ -245,7 +257,7 @@ export const getDatabaseSchema = async (): Promise<string> => {
 
 
 // Execute SQL query
-export const execute = async (sqlQuery: string): Promise<any> => {
+export const execute = async (sqlQuery: string): Promise<QueryResult> => { // Explicitly define return type
   if (!connectionPool || !connectionPool.connected) {
     throw new Error('Database connection not initialized or disconnected. Please connect to a database first.');
   }
@@ -263,12 +275,15 @@ export const execute = async (sqlQuery: string): Promise<any> => {
       success: true,
       query: sqlQuery
     };
-  } catch (error: any) {
+  } catch (error: unknown) { // Change 'any' to 'unknown'
     console.error('SQL execution error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
     return { 
-      error: error.message,
+      error: errorMessage, // Use the typed error message
       success: false,
-      query: sqlQuery
+      query: sqlQuery,
+      data: [], // Ensure data is an array
+      rowsAffected: undefined // Ensure rowsAffected is defined or undefined
     };
   }
 };
@@ -297,14 +312,15 @@ export const testConnection = async (config: DatabaseConfig): Promise<{ success:
     await request.query('SELECT 1 as test');
     
     return { success: true, message: 'Connection successful' };
-  } catch (error: any) {
+  } catch (error: unknown) { // Change 'any' to 'unknown'
     console.error('Connection test failed:', error);
-    return { success: false, message: error.message };
+    const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
+    return { success: false, message: errorMessage };
   } finally {
     if (testPool) {
       try {
         await testPool.close();
-      } catch (closeError) {
+      } catch (closeError: unknown) { // Change 'any' to 'unknown'
         console.error('Error closing test connection pool:', closeError);
       }
     }
@@ -330,9 +346,10 @@ export const closeConnection = async (): Promise<{ success: boolean; message: st
       dbSchema = null; // Clear schema on disconnect
       console.log("Database connection closed.");
       return { success: true, message: 'Disconnected from database successfully' };
-    } catch (error: any) {
+    } catch (error: unknown) { // Change 'any' to 'unknown'
       console.error('Error closing connection:', error);
-      return { success: false, message: `Error disconnecting: ${error.message}` };
+      const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
+      return { success: false, message: `Error disconnecting: ${errorMessage}` };
     }
   }
   return { success: true, message: 'No active connection to disconnect.' }; // Already disconnected

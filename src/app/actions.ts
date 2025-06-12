@@ -6,20 +6,21 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { mapStoredMessagesToChatMessages, StoredMessage } from "@langchain/core/messages";
 // Import ALL necessary functions from database.ts
-import { 
-  execute, 
-  getDatabaseSchema, 
-  initializeConnection, 
-  testConnection, 
-  getConnectionStatus, 
-  closeConnection, 
-  DatabaseConfig // Import the interface here too
-} from "./database";
+import {
+  execute,
+  getDatabaseSchema,
+  initializeConnection,
+  testConnection,
+  getConnectionStatus,
+  closeConnection,
+  DatabaseConfig, // Import the interface here too
+  QueryResult // Import the new interface for query results
+} from "./database"; //
 
 // These are your SERVER ACTIONS, called directly by the frontend
 // They will internally use the functions from database.ts
 
-export { 
+export {
     getConnectionStatus as getDbConnectionStatus, // Export and rename for frontend consistency
     closeConnection as disconnectFromDatabase // Export and rename for frontend consistency
 };
@@ -29,7 +30,7 @@ export const connectToDatabase = async (config: DatabaseConfig): Promise<{ succe
   try {
     // First test the connection
     const testResult = await testConnection(config);
-    
+
     if (!testResult.success) {
       return { success: false, message: `Connection test failed: ${testResult.message}` };
     }
@@ -38,14 +39,16 @@ export const connectToDatabase = async (config: DatabaseConfig): Promise<{ succe
     await initializeConnection(config); // This handles setting the global pool and schema
 
     const schema = await getDatabaseSchema(); // Get the now stored schema
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `Successfully connected to database "${config.database}" on server "${config.server}"`,
-      schema 
+      schema
     };
-  } catch (error: any) {
+  } catch (error: unknown) { // Changed to unknown
     console.error('Database connection error in action:', error);
-    return { success: false, message: `Connection failed: ${error.message}` };
+    // Type narrowing for error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, message: `Connection failed: ${errorMessage}` };
   }
 };
 
@@ -54,10 +57,10 @@ export const connectToDatabase = async (config: DatabaseConfig): Promise<{ succe
 export const message = async (messages: StoredMessage[]) => {
   try {
     const deserialized = mapStoredMessagesToChatMessages(messages);
-    
+
     // Check if database is connected
     const connectionStatus = await getConnectionStatus();
-    
+
     if (!connectionStatus.connected) {
       return "❌ Please connect to a database first before asking questions. Use the 'Connect Database' button to establish a connection.";
     }
@@ -66,13 +69,14 @@ export const message = async (messages: StoredMessage[]) => {
     let currentSchema = "";
     try {
       currentSchema = await getDatabaseSchema();
-    } catch (error: any) {
+    } catch (error: unknown) { // Changed to unknown
       console.error("Schema retrieval error in action:", error);
-      return `❌ Error retrieving database schema: ${error.message}. Please check your database connection and try reconnecting.`;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return `❌ Error retrieving database schema: ${errorMessage}. Please check your database connection and try reconnecting.`;
     }
 
     const getFromDB = tool(
-      async (input) => {
+      async (input: { sql: string }): Promise<string> => { // Explicitly type input and return
         if (!input?.sql) {
           return JSON.stringify({
             error: "No SQL query provided",
@@ -81,14 +85,14 @@ export const message = async (messages: StoredMessage[]) => {
         }
 
         try {
-          const result = await execute(input.sql); // Use the execute from database.ts
+          const result: QueryResult = await execute(input.sql); // Explicitly type result
           console.log('Query execution result:', { success: result.success, query: input.sql, rowCount: result.data?.length });
-          
+
           if (result.success) {
             const dataCount = result.data?.length || 0;
             // rowsAffected might be undefined for SELECT queries, so default to dataCount
-            const rowsAffected = result.rowsAffected?.[0] || dataCount; 
-            
+            const rowsAffected = result.rowsAffected?.[0] || dataCount;
+
             return JSON.stringify({
               data: result.data,
               rowsAffected: rowsAffected,
@@ -104,18 +108,19 @@ export const message = async (messages: StoredMessage[]) => {
               message: `❌ Query execution failed: ${result.error}`
             });
           }
-        } catch (error: any) {
+        } catch (error: unknown) { // Changed to unknown
           console.error('Unexpected error in query execution tool:', error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
           return JSON.stringify({
-            error: error.message,
+            error: errorMessage,
             success: false,
-            message: `❌ An unexpected error occurred: ${error.message}`
+            message: `❌ An unexpected error occurred: ${errorMessage}`
           });
         }
       },
       {
         name: "get_from_db",
-        description: `Execute SQL queries on the connected SQL Server database. 
+        description: `Execute SQL queries on the connected SQL Server database.
 
 Current Database Schema:
 ${currentSchema}
@@ -185,8 +190,9 @@ Always be helpful, accurate, and provide actionable insights from the data.`
     });
 
     return response.messages[response.messages.length - 1].content;
-  } catch (error: any) {
+  } catch (error: unknown) { // Changed to unknown
     console.error('Error in message processing (action):', error);
-    return `❌ An error occurred while processing your request: ${error.message}. Please try again or check your database connection.`;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return `❌ An error occurred while processing your request: ${errorMessage}. Please try again or check your database connection.`;
   }
 };

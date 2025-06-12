@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   HumanMessage,
-  SystemMessage,
+  // SystemMessage, // REMOVE this line - it's unused
   BaseMessage,
   AIMessage,
   mapChatMessagesToStoredMessages
@@ -45,13 +45,14 @@ const connectToDatabaseAPI = async (config: DatabaseConfig): Promise<ConnectionR
 
   if (!response.ok) {
     const error = await response.json();
+    // Assuming error.error exists if response is not ok
     throw new Error(error.error || 'Connection failed');
   }
 
   return response.json();
 };
 
-const sendMessageAPI = async (messages: any[]): Promise<string> => {
+const sendMessageAPI = async (messages: any[]): Promise<{ result: string }> => { // Explicitly type the expected response object
   const response = await fetch('/api/message', {
     method: 'POST',
     headers: {
@@ -65,8 +66,7 @@ const sendMessageAPI = async (messages: any[]): Promise<string> => {
     throw new Error(error.error || 'Message failed');
   }
 
-  const data = await response.json();
-  return data.result;
+  return response.json(); // Return the whole JSON object
 };
 
 const getDbConnectionStatusAPI = async (): Promise<ConnectionStatus> => {
@@ -130,8 +130,11 @@ export default function Home() {
     try {
       const status = await getDbConnectionStatusAPI();
       setConnectionStatus(status);
-    } catch (error) {
+    } catch (error: unknown) { // Change to unknown and narrow
       console.error('Error checking connection status:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Optionally display this error to the user or update UI
+      alert(`Error checking connection status: ${errorMessage}`);
     }
   }
 
@@ -157,8 +160,9 @@ export default function Home() {
       } else {
         alert(`❌ Connection failed: ${result.message}`);
       }
-    } catch (error) {
-      alert(`❌ Connection failed: ${error.message}`);
+    } catch (error: unknown) { // Change to unknown and narrow
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`❌ Connection failed: ${errorMessage}`);
     }
     setIsConnecting(false);
   }
@@ -171,8 +175,10 @@ export default function Home() {
         const disconnectMessage = new AIMessage(`🔌 ${result.message}`);
         setMessages(prev => [...prev, disconnectMessage]);
       }
-    } catch (error) {
+    } catch (error: unknown) { // Change to unknown and narrow
       console.error('Error disconnecting:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`Error disconnecting: ${errorMessage}`);
     }
   }
 
@@ -187,15 +193,18 @@ export default function Home() {
     setMessages(messageHistory);
 
     try {
-      const response = await sendMessageAPI(mapChatMessagesToStoredMessages(messageHistory));
-
-      if (response) {
-        messageHistory.push(new AIMessage(response as string));
+      const response = await sendMessageAPI(mapChatMessagesToStoredMessages(messageHistory)); // No longer 'any[]'
+      // The `response` from `sendMessageAPI` is now { result: string }, so access `response.result`
+      if (response && response.result) {
+        messageHistory.push(new AIMessage(response.result));
         setMessages(messageHistory);
+      } else {
+        throw new Error("No valid response received from AI.");
       }
-    } catch (error) {
+    } catch (error: unknown) { // Change to unknown and narrow
       console.error('Error sending message:', error);
-      const errorMessage = new AIMessage(`❌ Error: ${error.message}`);
+      const errorMessageText = error instanceof Error ? error.message : String(error);
+      const errorMessage = new AIMessage(`❌ Error: ${errorMessageText}`);
       setMessages([...messageHistory, errorMessage]);
     }
 
