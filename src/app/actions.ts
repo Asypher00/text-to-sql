@@ -17,6 +17,16 @@ import {
   QueryResult // Import the new interface for query results
 } from "./database"; //
 
+// Define proper types instead of using 'any'
+interface ToolResult {
+  data?: unknown[];
+  rowsAffected?: number;
+  success: boolean;
+  query: string;
+  error?: string;
+  message: string;
+}
+
 // These are your SERVER ACTIONS, called directly by the frontend
 // They will internally use the functions from database.ts
 
@@ -44,7 +54,7 @@ export const connectToDatabase = async (config: DatabaseConfig): Promise<{ succe
       message: `Successfully connected to database "${config.database}" on server "${config.server}"`,
       schema
     };
-  } catch (error: unknown) { // Changed to unknown
+  } catch (error: unknown) {
     console.error('Database connection error in action:', error);
     // Type narrowing for error
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -69,14 +79,14 @@ export const message = async (messages: StoredMessage[]) => {
     let currentSchema = "";
     try {
       currentSchema = await getDatabaseSchema();
-    } catch (error: unknown) { // Changed to unknown
+    } catch (error: unknown) {
       console.error("Schema retrieval error in action:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       return `❌ Error retrieving database schema: ${errorMessage}. Please check your database connection and try reconnecting.`;
     }
 
     const getFromDB = tool(
-      async (input: { sql: string }): Promise<string> => { // Explicitly type input and return
+      async (input: { sql: string }): Promise<string> => {
         if (!input?.sql) {
           return JSON.stringify({
             error: "No SQL query provided",
@@ -85,7 +95,7 @@ export const message = async (messages: StoredMessage[]) => {
         }
 
         try {
-          const result: QueryResult = await execute(input.sql); // Explicitly type result
+          const result: QueryResult = await execute(input.sql);
           console.log('Query execution result:', { success: result.success, query: input.sql, rowCount: result.data?.length });
 
           if (result.success) {
@@ -108,7 +118,7 @@ export const message = async (messages: StoredMessage[]) => {
               message: `❌ Query execution failed: ${result.error}`
             });
           }
-        } catch (error: unknown) { // Changed to unknown
+        } catch (error: unknown) {
           console.error('Unexpected error in query execution tool:', error);
           const errorMessage = error instanceof Error ? error.message : String(error);
           return JSON.stringify({
@@ -190,7 +200,7 @@ Always be helpful, accurate, and provide actionable insights from the data.`
     });
 
     return response.messages[response.messages.length - 1].content;
-  } catch (error: unknown) { // Changed to unknown
+  } catch (error: unknown) {
     console.error('Error in message processing (action):', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return `❌ An error occurred while processing your request: ${errorMessage}. Please try again or check your database connection.`;

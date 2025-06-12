@@ -15,7 +15,7 @@ export interface DatabaseConfig {
 
 // Define the QueryResult interface
 export interface QueryResult {
-  data: any[]; // You might want to refine this 'any' if the data structure is predictable
+  data: Record<string, unknown>[]; // More specific type instead of any[]
   rowsAffected: number[] | undefined;
   success: boolean;
   query: string;
@@ -70,7 +70,7 @@ export const initializeConnection = async (config: DatabaseConfig): Promise<bool
     dbSchema = await getDatabaseSchemaInternal();
 
     return true;
-  } catch (error: unknown) { // Change 'any' to 'unknown'
+  } catch (error: unknown) {
     console.error('Error initializing database connection:', error);
     connectionPool = null;
     currentConfig = null;
@@ -143,9 +143,9 @@ const getDatabaseSchemaInternal = async (): Promise<string> => {
     `);
 
     const rowCounts = new Map<string, number>(); // Explicitly type Map
-    countResult.recordset.forEach(row => {
+    countResult.recordset.forEach((row: Record<string, unknown>) => {
       const key = `${row.schema_name}.${row.table_name}`;
-      rowCounts.set(key, row.row_count);
+      rowCounts.set(key, row.row_count as number);
     });
 
     let schemaInfo = `Database: ${currentConfig?.database}\nServer: ${currentConfig?.server}\n\n`;
@@ -184,7 +184,7 @@ const getDatabaseSchemaInternal = async (): Promise<string> => {
     schemaInfo += "- Use proper schema.table notation when needed\n";
 
     return schemaInfo;
-  } catch (error: unknown) { // Change 'any' to 'unknown'
+  } catch (error: unknown) {
     console.error('Error getting database schema (initial attempt):', error);
     const initialErrorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
     // Fallback: Try a simpler schema query if the complex one fails
@@ -239,7 +239,7 @@ const getDatabaseSchemaInternal = async (): Promise<string> => {
       schemaInfo += "- Use proper schema.table notation when needed\n";
 
       return schemaInfo;
-    } catch (fallbackError: unknown) { // Change 'any' to 'unknown'
+    } catch (fallbackError: unknown) {
       console.error('Fallback schema query also failed:', fallbackError);
       const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError); // Type narrowing
       throw new Error(`Failed to retrieve database schema: ${fallbackErrorMessage}. Initial error: ${initialErrorMessage}`);
@@ -275,7 +275,7 @@ export const execute = async (sqlQuery: string): Promise<QueryResult> => { // Ex
       success: true,
       query: sqlQuery
     };
-  } catch (error: unknown) { // Change 'any' to 'unknown'
+  } catch (error: unknown) {
     console.error('SQL execution error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
     return { 
@@ -312,7 +312,7 @@ export const testConnection = async (config: DatabaseConfig): Promise<{ success:
     await request.query('SELECT 1 as test');
     
     return { success: true, message: 'Connection successful' };
-  } catch (error: unknown) { // Change 'any' to 'unknown'
+  } catch (error: unknown) {
     console.error('Connection test failed:', error);
     const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
     return { success: false, message: errorMessage };
@@ -320,7 +320,7 @@ export const testConnection = async (config: DatabaseConfig): Promise<{ success:
     if (testPool) {
       try {
         await testPool.close();
-      } catch (closeError: unknown) { // Change 'any' to 'unknown'
+      } catch (closeError: unknown) {
         console.error('Error closing test connection pool:', closeError);
       }
     }
@@ -346,7 +346,7 @@ export const closeConnection = async (): Promise<{ success: boolean; message: st
       dbSchema = null; // Clear schema on disconnect
       console.log("Database connection closed.");
       return { success: true, message: 'Disconnected from database successfully' };
-    } catch (error: unknown) { // Change 'any' to 'unknown'
+    } catch (error: unknown) {
       console.error('Error closing connection:', error);
       const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
       return { success: false, message: `Error disconnecting: ${errorMessage}` };
