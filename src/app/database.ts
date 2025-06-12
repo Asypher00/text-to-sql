@@ -1,80 +1,7 @@
-// "use server"
-
-// import sqlite3 from "sqlite3";
-// import { customerTable, orderTable } from "./consants";
-
-// const db = new sqlite3.Database('":memory:"');
-
-// export const seed = async () => {
-//     db.serialize(() => {
-//         db.run(customerTable);
-//         db.run(orderTable);
-//     });
-
-//     db.run(`
-// REPLACE INTO 'customer' ('id', 'email', 'name')  
-// VALUES  
-//     (1, 'lucas.bill@example.com', 'Lucas Bill'),  
-//     (2, 'mandy.jones@example.com', 'Mandy Jones'),  
-//     (3, 'salim.ali@example.com', 'Salim Ali'),  
-//     (4, 'jane.xiu@example.com', 'Jane Xiu'),  
-//     (5, 'john.doe@example.com', 'John Doe'),  
-//     (6, 'jane.smith@example.com', 'Jane Smith'),  
-//     (7, 'sandeep.bhushan@example.com', 'Sandeep Bhushan'),  
-//     (8, 'george.han@example.com', 'George Han'),  
-//     (9, 'asha.kumari@example.com', 'Asha Kumari'),  
-//     (10, 'salma.khan@example.com', 'Salma Khan');
-//     `);
-
-//     db.run(`
-// REPLACE INTO 'order' ('id', 'createdate', 'shippingcost', 'customerid', 'carrier', 'trackingid')
-// VALUES
-//     (1, '2024-08-05', 3, 4, '', ''),
-//     (2, '2024-08-02', 3, 6, '', ''),
-//     (3, '2024-08-04', 1, 10, '', ''),
-//     (4, '2024-08-03', 2, 8, '', ''),
-//     (5, '2024-08-10', 2, 10, '', ''),
-//     (6, '2024-08-01', 3, 3, '', ''),
-//     (7, '2024-08-02', 1, 4, '', ''),
-//     (8, '2024-08-04', 3, 2, '', ''),
-//     (9, '2024-08-07', 3, 8, '', ''),
-//     (10, '2024-08-09', 1, 9, '', ''),
-//     (11, '2024-08-07', 2, 7, '', ''),
-//     (12, '2024-08-03', 3, 9, '', ''),
-//     (13, '2024-08-06', 3, 5, '', ''),
-//     (14, '2024-08-01', 2, 2, '', ''),
-//     (15, '2024-08-05', 1, 3, '', ''),
-//     (16, '2024-08-02', 2, 5, '', ''),
-//     (17, '2024-08-03', 1, 7, '', ''),
-//     (18, '2024-08-06', 1, 6, '', ''),
-//     (19, '2024-08-04', 2, 1, '', ''),
-//     (20, '2024-08-01', 1, 1, '', '');    
-//     `);
-
-// }
-
-// export const execute = async (sql : string) => {
-//     return await new Promise((resolve, reject) => {
-//         try {
-//             db.all(sql, (error, result) => {
-//                 if (error) resolve(JSON.stringify(error));
-
-//                 resolve(result);
-//             })
-//         } catch (e) {
-//             console.log(e);
-//             reject(e);
-//         }
-//     })
-// } 
-
-
-"use server"
-
 import sql from 'mssql';
 
-// Configuration interface for database connection
-interface DatabaseConfig {
+// Define types locally or import from a shared types file
+export interface DatabaseConfig {
   server: string;
   database: string;
   user: string;
@@ -86,20 +13,21 @@ interface DatabaseConfig {
   };
 }
 
-// Store the current connection configuration
-let currentConfig: DatabaseConfig | null = null;
+// Private variables to hold the connection pool and config
 let connectionPool: sql.ConnectionPool | null = null;
+let currentConfig: DatabaseConfig | null = null;
+let dbSchema: string | null = null; // Store schema once connected
 
-// Initialize connection with provided configuration
+// Function to initialize the connection pool
 export const initializeConnection = async (config: DatabaseConfig): Promise<boolean> => {
-  try {
-    // Close existing connection if any
-    if (connectionPool) {
-      await connectionPool.close();
-    }
+  if (connectionPool && connectionPool.connected) {
+    // If already connected, close the existing one first
+    await closeConnection();
+  }
 
-    // Create new connection pool
-    const poolConfig: sql.config = {
+  try {
+    currentConfig = config;
+    connectionPool = new sql.ConnectionPool({
       server: config.server,
       database: config.database,
       user: config.user,
@@ -109,85 +37,48 @@ export const initializeConnection = async (config: DatabaseConfig): Promise<bool
         encrypt: config.options?.encrypt ?? true,
         trustServerCertificate: config.options?.trustServerCertificate ?? true,
       },
-      pool: {
-        max: 10,
-        min: 0,
-        idleTimeoutMillis: 30000,
-      },
-      connectionTimeout: 15000,
-      requestTimeout: 30000,
-    };
+      connectionTimeout: 15000, // 15 seconds
+      requestTimeout: 30000, // 30 seconds for requests
+    });
 
-    connectionPool = new sql.ConnectionPool(poolConfig);
+    // Event listener for connection errors (important for resilience)
+    connectionPool.on('error', err => {
+      console.error('MSSQL Pool Error:', err);
+      // Depending on the error, you might want to automatically close and nullify the pool
+      if (connectionPool && connectionPool.connected) {
+         // Optionally, try to close the pool if it's in a bad state
+         // connectionPool.close().catch(e => console.error("Error closing pool on error:", e));
+      }
+      connectionPool = null;
+      currentConfig = null;
+      dbSchema = null;
+    });
+
     await connectionPool.connect();
+    console.log(`Database connected: ${config.database}@${config.server}`);
     
-    currentConfig = config;
-    console.log('Successfully connected to SQL Server database');
+    // Fetch and store schema immediately upon successful connection
+    dbSchema = await getDatabaseSchemaInternal();
+
     return true;
   } catch (error) {
-    console.error('Failed to connect to database:', error);
+    console.error('Error initializing database connection:', error);
     connectionPool = null;
     currentConfig = null;
-    return false;
+    dbSchema = null;
+    throw error; // Re-throw to be caught by API route
   }
 };
 
-// Get database schema information
-// export const getDatabaseSchema = async (): Promise<string> => {
-//   if (!connectionPool) {
-//     throw new Error('Database connection not initialized');
-//   }
-
-//   try {
-//     const request = new sql.Request(connectionPool);
-    
-//     // Get all tables and their columns
-//     const result = await request.query(`
-//       SELECT 
-//         t.TABLE_SCHEMA,
-//         t.TABLE_NAME,
-//         c.COLUMN_NAME,
-//         c.DATA_TYPE,
-//         c.CHARACTER_MAXIMUM_LENGTH,
-//         c.IS_NULLABLE,
-//         c.COLUMN_DEFAULT,
-//         c.ORDINAL_POSITION,
-//         CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 'YES' ELSE 'NO' END AS IS_PRIMARY_KEY,
-//         CASE WHEN fk.COLUMN_NAME IS NOT NULL THEN 'YES' ELSE 'NO' END AS IS_FOREIGN_KEY,
-//         fk.REFERENCED_TABLE_NAME,
-//         fk.REFERENCED_COLUMN_NAME
-//       FROM INFORMATION_SCHEMA.TABLES t
-//       LEFT JOIN INFORMATION_SCHEMA.COLUMNS c ON t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_SCHEMA = c.TABLE_SCHEMA
-//       LEFT JOIN (
-//         SELECT ku.TABLE_SCHEMA, ku.TABLE_NAME, ku.COLUMN_NAME
-//         FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-//         INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
-//         WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-//       ) pk ON c.TABLE_SCHEMA = pk.TABLE_SCHEMA AND c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
-//       LEFT JOIN (
-//         SELECT 
-//           kcu.TABLE_SCHEMA,
-//           kcu.TABLE_NAME,
-//           kcu.COLUMN_NAME,
-//           kcu.REFERENCED_TABLE_NAME,
-//           kcu.REFERENCED_COLUMN_NAME
-//         FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
-//         INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-//       ) fk ON c.TABLE_SCHEMA = fk.TABLE_SCHEMA AND c.TABLE_NAME = fk.TABLE_NAME AND c.COLUMN_NAME = fk.COLUMN_NAME
-//       WHERE t.TABLE_TYPE = 'BASE TABLE'
-//       ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME, c.ORDINAL_POSITION
-//     `);
-
-// Get database schema information
-export const getDatabaseSchema = async (): Promise<string> => {
+// Internal function to get schema (used after successful connection)
+const getDatabaseSchemaInternal = async (): Promise<string> => {
   if (!connectionPool) {
-    throw new Error('Database connection not initialized');
+    throw new Error('Database connection not initialized for schema retrieval.');
   }
 
   try {
     const request = new sql.Request(connectionPool);
     
-    // Get all tables and their columns with corrected foreign key query
     const result = await request.query(`
       SELECT 
         t.TABLE_SCHEMA,
@@ -229,7 +120,6 @@ export const getDatabaseSchema = async (): Promise<string> => {
       ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME, c.ORDINAL_POSITION
     `);
 
-    // Get table row counts
     const countRequest = new sql.Request(connectionPool);
     const countResult = await countRequest.query(`
       SELECT 
@@ -239,17 +129,15 @@ export const getDatabaseSchema = async (): Promise<string> => {
       FROM sys.tables t
       INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
       INNER JOIN sys.partitions p ON t.object_id = p.object_id
-      WHERE p.index_id IN (0, 1)
+      WHERE p.index_id IN (0, 1) -- Heap or Clustered Index
     `);
 
-    // Create a map of table row counts
     const rowCounts = new Map();
     countResult.recordset.forEach(row => {
       const key = `${row.schema_name}.${row.table_name}`;
       rowCounts.set(key, row.row_count);
     });
 
-    // Format schema information
     let schemaInfo = `Database: ${currentConfig?.database}\nServer: ${currentConfig?.server}\n\n`;
     schemaInfo += "=== DATABASE SCHEMA ===\n\n";
     
@@ -287,8 +175,7 @@ export const getDatabaseSchema = async (): Promise<string> => {
 
     return schemaInfo;
   } catch (error) {
-    console.error('Error getting database schema:', error);
-    
+    console.error('Error getting database schema (initial attempt):', error);
     // Fallback: Try a simpler schema query if the complex one fails
     try {
       const simpleRequest = new sql.Request(connectionPool);
@@ -309,7 +196,7 @@ export const getDatabaseSchema = async (): Promise<string> => {
       `);
 
       let schemaInfo = `Database: ${currentConfig?.database}\nServer: ${currentConfig?.server}\n\n`;
-      schemaInfo += "=== DATABASE SCHEMA (Basic) ===\n\n";
+      schemaInfo += "=== DATABASE SCHEMA (Basic Fallback) ===\n\n";
       
       let currentTable = "";
       let tableCount = 0;
@@ -341,36 +228,42 @@ export const getDatabaseSchema = async (): Promise<string> => {
       schemaInfo += "- Use proper schema.table notation when needed\n";
 
       return schemaInfo;
-    } catch (fallbackError) {
+    } catch (fallbackError: any) {
       console.error('Fallback schema query also failed:', fallbackError);
-      throw new Error(`Failed to retrieve database schema: ${error.message}`);
+      throw new Error(`Failed to retrieve database schema: ${fallbackError.message || error.message}`);
     }
   }
 };
 
+// Exported function to get current schema (simply returns the stored one)
+export const getDatabaseSchema = async (): Promise<string> => {
+    if (!dbSchema) {
+        throw new Error('Database schema not available. Please connect to a database first.');
+    }
+    return dbSchema;
+};
+
+
 // Execute SQL query
 export const execute = async (sqlQuery: string): Promise<any> => {
-  if (!connectionPool) {
-    throw new Error('Database connection not initialized. Please connect to a database first.');
+  if (!connectionPool || !connectionPool.connected) {
+    throw new Error('Database connection not initialized or disconnected. Please connect to a database first.');
   }
 
   try {
     const request = new sql.Request(connectionPool);
-    
-    // Set query timeout (30 seconds)
-    request.timeout = 30000;
+    request.timeout = 30000; // Set query timeout (30 seconds)
     
     console.log('Executing SQL:', sqlQuery);
     const result = await request.query(sqlQuery);
     
-    // Return the recordset (data rows) and additional info
     return {
       data: result.recordset,
       rowsAffected: result.rowsAffected,
       success: true,
       query: sqlQuery
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('SQL execution error:', error);
     return { 
       error: error.message,
@@ -380,10 +273,11 @@ export const execute = async (sqlQuery: string): Promise<any> => {
   }
 };
 
-// Test database connection
+// Test database connection (temporary pool for test)
 export const testConnection = async (config: DatabaseConfig): Promise<{ success: boolean; message: string }> => {
+  let testPool: sql.ConnectionPool | null = null;
   try {
-    const testPool = new sql.ConnectionPool({
+    testPool = new sql.ConnectionPool({
       server: config.server,
       database: config.database,
       user: config.user,
@@ -398,16 +292,22 @@ export const testConnection = async (config: DatabaseConfig): Promise<{ success:
 
     await testPool.connect();
     
-    // Test a simple query
+    // Test a simple query to ensure it's functional
     const request = new sql.Request(testPool);
     await request.query('SELECT 1 as test');
     
-    await testPool.close();
-    
     return { success: true, message: 'Connection successful' };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Connection test failed:', error);
     return { success: false, message: error.message };
+  } finally {
+    if (testPool) {
+      try {
+        await testPool.close();
+      } catch (closeError) {
+        console.error('Error closing test connection pool:', closeError);
+      }
+    }
   }
 };
 
@@ -421,14 +321,19 @@ export const getConnectionStatus = async (): Promise<{ connected: boolean; datab
 };
 
 // Close database connection
-export const closeConnection = async (): Promise<void> => {
+export const closeConnection = async (): Promise<{ success: boolean; message: string }> => {
   if (connectionPool) {
     try {
       await connectionPool.close();
-    } catch (error) {
+      connectionPool = null;
+      currentConfig = null;
+      dbSchema = null; // Clear schema on disconnect
+      console.log("Database connection closed.");
+      return { success: true, message: 'Disconnected from database successfully' };
+    } catch (error: any) {
       console.error('Error closing connection:', error);
+      return { success: false, message: `Error disconnecting: ${error.message}` };
     }
-    connectionPool = null;
-    currentConfig = null;
   }
+  return { success: true, message: 'No active connection to disconnect.' }; // Already disconnected
 };

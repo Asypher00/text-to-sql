@@ -1,124 +1,3 @@
-// "use client"
-// import { useState, useEffect } from "react";
-// import {
-//   HumanMessage,
-//   SystemMessage,
-//   BaseMessage,
-//   AIMessage,
-//   mapChatMessagesToStoredMessages
-// } from "@langchain/core/messages"
-// import { message } from "./actions";
-// import{ seed } from "./database"
-
-// export default function Home() {
-//   const [inputMessage, setInputMessage] = useState("")
-//   const [messages, setMessages] = useState<BaseMessage[]>([
-//     new SystemMessage(`
-//        You are an expert SQL assistant. Your task is to generate SQL queries based on user requests. Follow these strict formatting guidelines:
-        
-//       You should create a SQLite query based on natural language. 
-//       Use the "getFromDB" tool to get data from a database.
-
-//       - Always enclose field names and table names in double quotes ("), even if they contain no special characters.
-//       - Ensure proper SQL syntax and use best practices for readability.
-//       - Maintain consistency in capitalization (e.g., SQL keywords in uppercase).
-//       `)
-//   ])
-//   const [isLoading, setIsLoading] = useState(false)
-
-//   useEffect(()=>{
-//     seed()
-//   }, [])
-//   const sendMessage = async () => {
-//     setInputMessage("");
-//     setIsLoading(true);
-//     const messageHistory = [...messages, new HumanMessage(inputMessage)];
-
-//     const response = await message(mapChatMessagesToStoredMessages(messageHistory));
-
-//     if (response) {
-//       messageHistory.push(new AIMessage(response as string));
-//     }
-
-//     setMessages(messageHistory);
-//     setIsLoading(false);
-//   }
-//   return (
-//     <div className="flex flex-col h-screen justify-between bg-white text-black">
-//       <header className="bg-white p-2 border-b">
-//         <div className="flex lg:flex-1 items-center justify-center">
-//           <a href="#" className="m-1.5">
-//             <span className="sr-only">Text-to-SQL Agent</span>
-//           </a>
-//           <h1 className="text-black font-bold">Text-to-SQL Agent</h1>
-//         </div>
-//       </header>
-
-//       <div className="flex-grow overflow-y-auto bg-white">
-//         {
-//           messages.length > 0 &&
-//           messages.map((message, index) => {
-//             if (message instanceof HumanMessage) {
-//               return (
-//                 <div key={message.getType() + index} className="col-start-1 col-end-8 p-3 rounded-lg">
-//                   <div className="flex flex-row items-center">
-//                     <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-400 text-white flex-shrink-0 text-sm">
-//                       Me
-//                     </div>
-//                     <div className="relative ml-3 text-sm bg-gray-400 text-black py-2 px-4 shadow rounded-xl">
-//                       <div>{message.content as string}</div>
-//                     </div>
-//                   </div>
-//                 </div>
-//               );
-//             }
-//             if (message instanceof AIMessage) {
-//               return (
-//                 <div key={message.getType() + index} className="col-start-6 col-end-13 p-3 rounded-lg">
-//                   <div className="flex items-center justify-start flex-row-reverse">
-//                     <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-400 flex-shrink-0 text-sm">
-//                       AI
-//                     </div>
-//                     <div className="relative mr-3 text-sm bg-blue-300 text-black py-2 px-4 shadow rounded-xl">
-//                       <div>
-//                         {message.content as string}
-//                       </div>
-//                     </div>
-//                   </div>
-//                 </div>
-//               );
-//             }
-
-//           })
-//         }
-
-//       </div>
-
-//       <div className="bg-white p-6 border-t">
-//         <div className="flex flex-row items-center h-16 rounded-xl bg-white w-full px-4">
-//           <div className="flex-grow ml-4">
-//             <div className="relative w-full">
-//               <input
-//                 type="text"
-//                 value={inputMessage}
-//                 onChange={e => setInputMessage(e.target.value)}
-//                 disabled={isLoading}
-//                 placeholder="Type your message here..."
-//                 className="flex w-full border rounded-xl focus:outline-none focus:border-indigo-300 pl-4 h-10"
-//               />
-//             </div>
-//           </div>
-//           <div className="ml-4">
-//             <button onClick={sendMessage} className="flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 rounded-xl text-white px-4 py-2 flex-shrink-0">
-//               <span>{isLoading ? `Loading...` : `Send`}</span>
-//             </button>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   )
-// }
-
 "use client"
 import { useState, useEffect, useRef } from "react";
 import {
@@ -128,7 +7,93 @@ import {
   AIMessage,
   mapChatMessagesToStoredMessages
 } from "@langchain/core/messages"
-import { message, connectToDatabase, getDbConnectionStatus, disconnectFromDatabase, DatabaseConfig } from "./actions";
+
+// Define types locally since we're no longer importing from actions
+interface DatabaseConfig {
+  server: string;
+  database: string;
+  user: string;
+  password: string;
+  port: number;
+  options: {
+    encrypt: boolean;
+    trustServerCertificate: boolean;
+  };
+}
+
+interface ConnectionResult {
+  success: boolean;
+  message: string;
+  schema?: string;
+}
+
+interface ConnectionStatus {
+  connected: boolean;
+  database?: string;
+  server?: string;
+}
+
+// API helper functions
+const connectToDatabaseAPI = async (config: DatabaseConfig): Promise<ConnectionResult> => {
+  const response = await fetch('/api/connect', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(config),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Connection failed');
+  }
+
+  return response.json();
+};
+
+const sendMessageAPI = async (messages: any[]): Promise<string> => {
+  const response = await fetch('/api/message', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Message failed');
+  }
+
+  const data = await response.json();
+  return data.result;
+};
+
+const getDbConnectionStatusAPI = async (): Promise<ConnectionStatus> => {
+  const response = await fetch('/api/connection', {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to get connection status');
+  }
+
+  return response.json();
+};
+
+const disconnectFromDatabaseAPI = async (): Promise<ConnectionResult> => {
+  const response = await fetch('/api/connection', {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Disconnection failed');
+  }
+
+  return response.json();
+};
 
 export default function Home() {
   const [inputMessage, setInputMessage] = useState("")
@@ -147,11 +112,7 @@ export default function Home() {
       trustServerCertificate: true
     }
   })
-  const [connectionStatus, setConnectionStatus] = useState<{
-    connected: boolean;
-    database?: string;
-    server?: string;
-  }>({ connected: false })
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ connected: false })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -167,7 +128,7 @@ export default function Home() {
 
   const checkConnectionStatus = async () => {
     try {
-      const status = await getDbConnectionStatus();
+      const status = await getDbConnectionStatusAPI();
       setConnectionStatus(status);
     } catch (error) {
       console.error('Error checking connection status:', error);
@@ -182,7 +143,7 @@ export default function Home() {
 
     setIsConnecting(true);
     try {
-      const result = await connectToDatabase(dbConfig);
+      const result = await connectToDatabaseAPI(dbConfig);
       
       if (result.success) {
         setShowConnectionModal(false);
@@ -204,7 +165,7 @@ export default function Home() {
 
   const handleDisconnect = async () => {
     try {
-      const result = await disconnectFromDatabase();
+      const result = await disconnectFromDatabaseAPI();
       if (result.success) {
         await checkConnectionStatus();
         const disconnectMessage = new AIMessage(`🔌 ${result.message}`);
@@ -226,7 +187,7 @@ export default function Home() {
     setMessages(messageHistory);
 
     try {
-      const response = await message(mapChatMessagesToStoredMessages(messageHistory));
+      const response = await sendMessageAPI(mapChatMessagesToStoredMessages(messageHistory));
 
       if (response) {
         messageHistory.push(new AIMessage(response as string));
@@ -364,7 +325,7 @@ export default function Home() {
                     <div className="mr-3 flex-shrink-0">
                       <div className="bg-green-600 text-white rounded-full p-2">
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clipRule="evenodd" />
+                          <path fillRule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 717 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clipRule="evenodd" />
                         </svg>
                       </div>
                     </div>

@@ -1,5 +1,3 @@
-//GEMINI
-
 "use server"
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
@@ -7,20 +5,24 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { mapStoredMessagesToChatMessages, StoredMessage } from "@langchain/core/messages";
-import { execute, getDatabaseSchema, initializeConnection, testConnection, getConnectionStatus, closeConnection } from "./database";
+// Import ALL necessary functions from database.ts
+import { 
+  execute, 
+  getDatabaseSchema, 
+  initializeConnection, 
+  testConnection, 
+  getConnectionStatus, 
+  closeConnection, 
+  DatabaseConfig // Import the interface here too
+} from "./database";
 
-// Database connection configuration interface
-export interface DatabaseConfig {
-  server: string;
-  database: string;
-  user: string;
-  password: string;
-  port?: number;
-  options?: {
-    encrypt?: boolean;
-    trustServerCertificate?: boolean;
-  };
-}
+// These are your SERVER ACTIONS, called directly by the frontend
+// They will internally use the functions from database.ts
+
+export { 
+    getConnectionStatus as getDbConnectionStatus, // Export and rename for frontend consistency
+    closeConnection as disconnectFromDatabase // Export and rename for frontend consistency
+};
 
 // Action to connect to database
 export const connectToDatabase = async (config: DatabaseConfig): Promise<{ success: boolean; message: string; schema?: string }> => {
@@ -32,49 +34,23 @@ export const connectToDatabase = async (config: DatabaseConfig): Promise<{ succe
       return { success: false, message: `Connection test failed: ${testResult.message}` };
     }
 
-    // Initialize the connection
-    const connected = await initializeConnection(config);
-    
-    if (connected) {
-      try {
-        const schema = await getDatabaseSchema();
-        return { 
-          success: true, 
-          message: `Successfully connected to database "${config.database}" on server "${config.server}"`,
-          schema 
-        };
-      } catch (schemaError) {
-        return {
-          success: true,
-          message: `Connected to database but couldn't retrieve schema: ${schemaError.message}`,
-          schema: "Schema information unavailable"
-        };
-      }
-    } else {
-      return { success: false, message: 'Failed to initialize database connection' };
-    }
-  } catch (error) {
-    console.error('Database connection error:', error);
+    // Initialize the main connection pool
+    await initializeConnection(config); // This handles setting the global pool and schema
+
+    const schema = await getDatabaseSchema(); // Get the now stored schema
+    return { 
+      success: true, 
+      message: `Successfully connected to database "${config.database}" on server "${config.server}"`,
+      schema 
+    };
+  } catch (error: any) {
+    console.error('Database connection error in action:', error);
     return { success: false, message: `Connection failed: ${error.message}` };
   }
 };
 
-// Action to get connection status
-export const getDbConnectionStatus = async () => {
-  return getConnectionStatus();
-};
 
-// Action to disconnect from database
-export const disconnectFromDatabase = async (): Promise<{ success: boolean; message: string }> => {
-  try {
-    await closeConnection();
-    return { success: true, message: 'Disconnected from database successfully' };
-  } catch (error) {
-    return { success: false, message: `Error disconnecting: ${error.message}` };
-  }
-};
-
-// Main message processing function
+// Main message processing function for Langchain
 export const message = async (messages: StoredMessage[]) => {
   try {
     const deserialized = mapStoredMessagesToChatMessages(messages);
@@ -90,8 +66,8 @@ export const message = async (messages: StoredMessage[]) => {
     let currentSchema = "";
     try {
       currentSchema = await getDatabaseSchema();
-    } catch (error) {
-      console.error("Schema retrieval error:", error);
+    } catch (error: any) {
+      console.error("Schema retrieval error in action:", error);
       return `❌ Error retrieving database schema: ${error.message}. Please check your database connection and try reconnecting.`;
     }
 
@@ -105,12 +81,13 @@ export const message = async (messages: StoredMessage[]) => {
         }
 
         try {
-          const result = await execute(input.sql);
+          const result = await execute(input.sql); // Use the execute from database.ts
           console.log('Query execution result:', { success: result.success, query: input.sql, rowCount: result.data?.length });
           
           if (result.success) {
             const dataCount = result.data?.length || 0;
-            const rowsAffected = result.rowsAffected?.[0] || dataCount;
+            // rowsAffected might be undefined for SELECT queries, so default to dataCount
+            const rowsAffected = result.rowsAffected?.[0] || dataCount; 
             
             return JSON.stringify({
               data: result.data,
@@ -127,8 +104,8 @@ export const message = async (messages: StoredMessage[]) => {
               message: `❌ Query execution failed: ${result.error}`
             });
           }
-        } catch (error) {
-          console.error('Unexpected error in query execution:', error);
+        } catch (error: any) {
+          console.error('Unexpected error in query execution tool:', error);
           return JSON.stringify({
             error: error.message,
             success: false,
@@ -208,8 +185,8 @@ Always be helpful, accurate, and provide actionable insights from the data.`
     });
 
     return response.messages[response.messages.length - 1].content;
-  } catch (error) {
-    console.error('Error in message processing:', error);
+  } catch (error: any) {
+    console.error('Error in message processing (action):', error);
     return `❌ An error occurred while processing your request: ${error.message}. Please try again or check your database connection.`;
   }
 };
