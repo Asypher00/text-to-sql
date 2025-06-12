@@ -5,6 +5,9 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { mapStoredMessagesToChatMessages, StoredMessage } from "@langchain/core/messages";
+// Import SystemMessage and HumanMessage for agent
+import { SystemMessage } from "@langchain/core/messages";
+
 // Import ALL necessary functions from database.ts
 import {
   execute,
@@ -21,8 +24,8 @@ import {
 // They will internally use the functions from database.ts
 
 export {
-    getConnectionStatus as getDbConnectionStatus, // Export and rename for frontend consistency
-    closeConnection as disconnectFromDatabase // Export and rename for frontend consistency
+  getConnectionStatus as getDbConnectionStatus, // Export and rename for frontend consistency
+  closeConnection as disconnectFromDatabase // Export and rename for frontend consistency
 };
 
 // Action to connect to database
@@ -58,12 +61,46 @@ export const message = async (messages: StoredMessage[]) => {
   try {
     const deserialized = mapStoredMessagesToChatMessages(messages);
 
+    // Create the system message content dynamically
+    let systemMessageContent = `You are an expert SQL Server database assistant. Your role is to help users query their SQL Server database using natural language.
+
+CORE RESPONSIBILITIES:
+1. Convert natural language questions into accurate T-SQL queries
+2. Execute queries using the get_from_db tool
+3. Explain results in a clear, user-friendly manner
+4. Provide insights and suggestions based on the data
+
+SQL SERVER SYNTAX RULES:
+- Use TOP N instead of LIMIT N
+- Use SQL Server functions (GETDATE(), LEN(), CHARINDEX(), etc.)
+- Use proper table.column notation with square brackets if needed
+- Always reference the exact schema provided in the tool description
+
+RESPONSE FORMAT:
+- Always use the get_from_db tool to execute queries
+- Explain what the query does before showing results
+- Format results in a readable way (tables, lists, or summaries)
+- If query fails, suggest corrections
+- For complex requests, break them down into steps
+
+BEST PRACTICES:
+- Start with simple queries to understand the data
+- Use meaningful column aliases for calculated fields
+- Include appropriate WHERE clauses to filter data
+- Use ORDER BY for sorted results
+- Consider performance for large datasets`;
+
+
     // Check if database is connected
     const connectionStatus = await getConnectionStatus();
 
     if (!connectionStatus.connected) {
       return "❌ Please connect to a database first before asking questions. Use the 'Connect Database' button to establish a connection.";
+    } else {
+        // Append connection details to system message if connected
+        systemMessageContent += `\n\nCurrent database connection: ${connectionStatus.server}/${connectionStatus.database}`;
     }
+
 
     // Get current database schema
     let currentSchema = "";
@@ -152,47 +189,23 @@ Always generate syntactically correct T-SQL queries based on the actual schema p
         temperature: 0.1, // Lower temperature for more consistent SQL generation
       }),
       tools: [getFromDB],
-      systemMessage: `You are an expert SQL Server database assistant. Your role is to help users query their SQL Server database using natural language.
-
-CORE RESPONSIBILITIES:
-1. Convert natural language questions into accurate T-SQL queries
-2. Execute queries using the get_from_db tool
-3. Explain results in a clear, user-friendly manner
-4. Provide insights and suggestions based on the data
-
-SQL SERVER SYNTAX RULES:
-- Use TOP N instead of LIMIT N
-- Use SQL Server functions (GETDATE(), LEN(), CHARINDEX(), etc.)
-- Use proper table.column notation with square brackets if needed
-- Always reference the exact schema provided in the tool description
-
-RESPONSE FORMAT:
-- Always use the get_from_db tool to execute queries
-- Explain what the query does before showing results
-- Format results in a readable way (tables, lists, or summaries)
-- If query fails, suggest corrections
-- For complex requests, break them down into steps
-
-BEST PRACTICES:
-- Start with simple queries to understand the data
-- Use meaningful column aliases for calculated fields
-- Include appropriate WHERE clauses to filter data
-- Use ORDER BY for sorted results
-- Consider performance for large datasets
-
-Current database connection: ${connectionStatus.server}/${connectionStatus.database}
-
-Always be helpful, accurate, and provide actionable insights from the data.`
+      // No systemMessage property here
     });
 
+    // Prepend the system message to the deserialized messages array
+    const messagesToSend = [
+        new SystemMessage(systemMessageContent),
+        ...deserialized
+    ];
+
     const response = await agent.invoke({
-      messages: deserialized
+      messages: messagesToSend
     });
 
     return response.messages[response.messages.length - 1].content;
   } catch (error: unknown) {
     console.error('Error in message processing (action):', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return `❌ An error occurred while processing your request: ${errorMessage}. Please try again or check your database connection.`;
+    return `❌ An error occurred while processing your request: ${errorMessage}. Please try again or check your database connection.` ;
   }
 };
