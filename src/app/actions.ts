@@ -17,16 +17,6 @@ import {
   QueryResult // Import the new interface for query results
 } from "./database"; //
 
-// Define proper types instead of using 'any'
-interface ToolResult {
-  data?: unknown[];
-  rowsAffected?: number;
-  success: boolean;
-  query: string;
-  error?: string;
-  message: string;
-}
-
 // These are your SERVER ACTIONS, called directly by the frontend
 // They will internally use the functions from database.ts
 
