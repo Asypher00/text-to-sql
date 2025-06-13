@@ -41,10 +41,11 @@ interface StoredMessage {
   type: string;
   data: {
     content: string;
-    additional_kwargs?: Record<string, any>;
-    response_metadata?: Record<string, any>;
+    additional_kwargs?: Record<string, unknown>;
+    response_metadata?: Record<string, unknown>;
   };
 }
+
 
 // API helper functions
 const connectToDatabaseAPI = async (config: DatabaseConfig): Promise<ConnectionResult> => {
