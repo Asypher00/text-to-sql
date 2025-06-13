@@ -255,17 +255,14 @@ export const getDatabaseSchema = async (): Promise<string> => {
     return dbSchema;
 };
 
-
 // Execute SQL query
-export const execute = async (sqlQuery: string): Promise<QueryResult> => { // Explicitly define return type
+export const execute = async (sqlQuery: string): Promise<QueryResult> => {
   if (!connectionPool || !connectionPool.connected) {
     throw new Error('Database connection not initialized or disconnected. Please connect to a database first.');
   }
 
   try {
     const request = new sql.Request(connectionPool);
-    // Use setTimeout method instead of setting timeout property
-    request.setTimeout(30000); // Set query timeout (30 seconds)
     
     console.log('Executing SQL:', sqlQuery);
     const result = await request.query(sqlQuery);
@@ -278,13 +275,13 @@ export const execute = async (sqlQuery: string): Promise<QueryResult> => { // Ex
     };
   } catch (error: unknown) {
     console.error('SQL execution error:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return { 
-      error: errorMessage, // Use the typed error message
+      error: errorMessage,
       success: false,
       query: sqlQuery,
-      data: [], // Ensure data is an array
-      rowsAffected: undefined // Ensure rowsAffected is defined or undefined
+      data: [],
+      rowsAffected: undefined
     };
   }
 };
@@ -315,7 +312,7 @@ export const testConnection = async (config: DatabaseConfig): Promise<{ success:
     return { success: true, message: 'Connection successful' };
   } catch (error: unknown) {
     console.error('Connection test failed:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, message: errorMessage };
   } finally {
     if (testPool) {
@@ -349,9 +346,9 @@ export const closeConnection = async (): Promise<{ success: boolean; message: st
       return { success: true, message: 'Disconnected from database successfully' };
     } catch (error: unknown) {
       console.error('Error closing connection:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error); // Type narrowing
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return { success: false, message: `Error disconnecting: ${errorMessage}` };
     }
   }
-  return { success: true, message: 'No active connection to disconnect.' }; // Already disconnected
+  return { success: true, message: 'No active connection to disconnect.' };
 };
