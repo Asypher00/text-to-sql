@@ -36,9 +36,14 @@ interface MessageResponse {
   result: string;
 }
 
+// Updated StoredMessage interface to match LangChain's structure
 interface StoredMessage {
   type: string;
-  content: string;
+  data: {
+    content: string;
+    additional_kwargs?: Record<string, any>;
+    response_metadata?: Record<string, any>;
+  };
 }
 
 // API helper functions
