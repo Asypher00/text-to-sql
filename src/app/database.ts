@@ -264,7 +264,8 @@ export const execute = async (sqlQuery: string): Promise<QueryResult> => { // Ex
 
   try {
     const request = new sql.Request(connectionPool);
-    request.timeout = 30000; // Set query timeout (30 seconds)
+    // Use setTimeout method instead of setting timeout property
+    request.setTimeout(30000); // Set query timeout (30 seconds)
     
     console.log('Executing SQL:', sqlQuery);
     const result = await request.query(sqlQuery);
